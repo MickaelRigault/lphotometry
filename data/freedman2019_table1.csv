@@ -1,0 +1,19 @@
+Galaxy,Type^a,A_I,d (kpc),SNName,Distance Reference
+M101^b,SAB(rs)cd,0.013,6.5,SN2011fe,Beaton et al. (2019); Paper VII
+M66 = NGC 3627^b,SAB(S)b,0.050,11.1,SN1989B,Hoyt et al. (2019); Paper VI
+M96 = NGC 3368^b,SAB(rs)ab,0.038,11.6,SN1998bu,Hoyt et al. (2019); Paper VI
+NGC 4536,SAB(rs)bc,0.027,15.6,SN1981B,Hatt et al. (2018a); Paper IV
+NGC 4526,SAB0(s) edge-on,0.033,15.8,SN1994D,Hatt et al. (2018a); Paper IV
+NGC 4424,SAB(s),0.031,15.8,SN2012cg,Hatt et al. (2018a); Paper IV
+NGC 1448,SAcd edge-on,0.021,18.4,SN2001el,Hatt et al. (2018b); Paper V
+NGC 1365,SB(s)b,0.031,18.7,SN2012fr,Jang et al. (2018); Paper III
+NGC 1316,SAB(0)peculiar,0.031,19.6,SN1980N SN1981D SN2006dd,Hatt et al. (2018b); Paper V
+NGC 1404,E1,0.017,19.3,SN2007on SN2011iv,This paper
+M101^b,SAB(rs)cd,0.013,6.5,SN2011fe,Jang & Lee (2017a)
+M66^b,SAB(S)b,0.050,11.1,SN1989B,Jang & Lee (2017a)
+M96^b,SAB(rs)ab,0.038,11.6,SN1998bu,Jang & Lee (2017a)
+NGC 4038,SB(s)m pec,0.070,21.7,SN2007sr,Jang & Lee (2017a)
+NGC 5584,SAB(rs)cd,0.059,23.1,SN2007af,Jang & Lee (2017a)
+NGC 3021,SA(rs)bc,0.020,27.8,SN1995al,Jang & Lee (2017a)
+NGC 3370,SA(s)c,0.046,28.5,SN1994ae,Jang & Lee (2017a)
+NGC 1309,SA(s)bc,0.060,31.6,SN2002fk,Jang & Lee (2017a)
