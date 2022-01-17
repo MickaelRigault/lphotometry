@@ -6,7 +6,8 @@ import warnings
 import pandas
 from astropy import units
 _SOURCEDIR = os.path.dirname(os.path.realpath(__file__))
-SPECIAL_DATADIR = os.getenv('DATAPATH',"./Data/")+"sn_anchorsample/"
+DATAPATH = os.getenv('DATAPATH',"./Data/")
+SPECIAL_DATADIR = DATAPATH+"sn_anchorsample/"
 
 COORDINATES =pandas.DataFrame({'SN1981B':[188.623194, 2.199796],
                                'SN1990N':[190.736174, 13.256495],
@@ -100,7 +101,7 @@ def get_fullriess_anchoringdata():
 # ======================= #
 def _panstarrs_filename_(name, band):
     """ """
-    return os.path.join(SPECIAL_DATADIR,f"{name}/{name}_panstarrs_{band}.fits" )
+    return os.path.join(DATAPATH,"panstarrs","cutouts",f"{name}/{name}_panstarrs_{band}.fits" )
 
 def get_panstarrs_files(name, bands=["g","r","i"], verbose=True):
     """ """

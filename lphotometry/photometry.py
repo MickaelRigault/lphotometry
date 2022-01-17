@@ -340,7 +340,7 @@ class PS1LocalMass( _Photomatize_ ):
         for bandname, g_ in self.instruments.items():
             if verbose:
                 print(g_.filename)
-            ppc = g_.get_target_photopoint(radius, runits=runits, on="_sourcedata")
+            ppc = g_.get_target_photopoint(radius, runits=runits, on="data")
             self._photopoints[bandname] = ppc
             gout = ppc.data.copy()
             gout["flux"] = ppc.flux
