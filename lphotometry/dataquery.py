@@ -26,10 +26,10 @@ def get_instrument(which, target, forcedl=False,
 
     **kwargs goes to get_{which}()
     """
-    if which == "galex":
+    if which.lower() == "galex":
         return get_galex(target, forcedl=forcedl, **kwargs)
     
-    if which == "panstarrs":
+    if which.lower() == "panstarrs":
         return get_panstarrs(target, forcedl=forcedl, **kwargs)
     
     raise NotImplementedError(f"{which} not implemented")

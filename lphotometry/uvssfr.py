@@ -89,7 +89,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
             
         return nuv-r, np.sqrt(nuverr**2+rerr**2)
             
-    def get_derived_parameters(self, rebuild=False, radius=None, runits="kpc"):
+    def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits) # this inclide a get_derived_parameters already
@@ -100,18 +100,22 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         
         data = {}
         # = Photometry
-        data["nuv"],data["nuv.err"] = self.get_photometry("nuv")
+        if self.has_uv():
+            data["nuv"],data["nuv.err"] = self.get_photometry("nuv")
+        else:
+            data["nuv"],data["nuv.err"] = None, None
+            
         if self.has_fuv():
             data["fuv"],data["fuv.err"] = self.get_photometry("fuv")
         else:
-            data["fuv"],data["fuv.err"] = None,None
+            data["fuv"],data["fuv.err"] = None, None
 
         if self.has_optical():
             for k in ["g","r","i"]:
                 data[k],data[k+".err"] = self.get_photometry(f"ps1.{k}")
         else:
             for k in ["g","r","i"]:
-                data[k],data[k+".err"] = None,None
+                data[k],data[k+".err"] = None, None
                 
         # = Generic
         data["distmpc"] = self.target.distance.to("Mpc").value
@@ -119,16 +123,25 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         data["name"] = self.target.name
         
         # = SFR
-        data["log_sfr"], data["log_sfr.err"] = self.get_sfr(inlog=True)
-        data["log_sfr.isbackup"] = not self.has_fuv()
+        if self.has_uv():
+            data["log_sfr"], data["log_sfr.err"] = self.get_sfr(inlog=True)
+            data["log_sfr.isbackup"] = not self.has_fuv()
+        else:
+            data["log_sfr"], data["log_sfr.err"] = None, None
+            data["log_sfr.isbackup"] = False
         
         # Mass
         data["lmass"], data["lmass.err"] = self.get_mass()
         data["lmass.isbackup"] = not self.has_optical()
         # LsSFR
-        data["lssfr"], data["lssfr.err"] = self.get_lssfr()
-        # NUV-r
-        data["nuvr"],data["nuvr.err"] = self.get_nuvr()
+        if self.has_uv():        
+            data["lssfr"], data["lssfr.err"] = self.get_lssfr()
+            # NUV-r
+            data["nuvr"],data["nuvr.err"] = self.get_nuvr()
+        else:
+            data["lssfr"], data["lssfr.err"] = None, None
+            # NUV-r
+            data["nuvr"],data["nuvr.err"] = None, None
 
         return pandas.Series(data)
 
