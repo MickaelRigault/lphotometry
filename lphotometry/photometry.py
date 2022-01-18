@@ -370,7 +370,7 @@ class PS1LocalMass( _Photomatize_ ):
         if refsize is not None:
             ref_surface = np.pi*refsize**2
             mass -= (np.log10(self.surface.value) - np.log10(ref_surface))
-        return mass
+        return mass, *err
         
     def get_backup_mass(self):
         """ Assuming the mean and the std of the local mass distribution from Rigault et al. 2018"""
