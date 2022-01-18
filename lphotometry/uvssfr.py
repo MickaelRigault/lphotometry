@@ -33,7 +33,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     # ================= #
     #  Special Methods  #
     # ================= #
-    def get_lssfr(self, radius=None, runits="kpc", allow_backup=["mass","sfr"], **kwargs):
+    def get_lssfr(self, radius=None, runits="kpc", allow_backup=["mass","sfr"], refsize=None, **kwargs):
         """ """
         if allow_backup is None:
             allow_backup = []
@@ -41,18 +41,18 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
             
-        local_mass = self.get_mass(allow_backup = "mass" in allow_backup)
+        local_mass = self.get_mass(refsize=refsize, allow_backup = "mass" in allow_backup)
         local_sfr  = self.get_sfr(allow_backup = "sfr" in allow_backup)
         return local_sfr[0] - local_mass[0], np.sqrt(local_sfr[1]**2 + np.mean(local_mass[1:])**2)
         
-    def get_mass(self, radius=None, runits="kpc", allow_backup=True, **kwargs):
+    def get_mass(self, radius=None, runits="kpc", allow_backup=True, refsize=None, **kwargs):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
 
             
         if self.has_optical():
-            m, *err = self.optical.get_mass(**kwargs)
+            m, *err = self.optical.get_mass(refsize=refsize, **kwargs)
             return m, np.mean([err])
         
         elif allow_backup:
@@ -89,7 +89,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
             
         return nuv-r, np.sqrt(nuverr**2+rerr**2)
             
-    def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False):
+    def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False, refsize=None):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits) # this inclide a get_derived_parameters already
@@ -131,11 +131,11 @@ class UVLocalsSFR( photometry._Photomatize_ ):
             data["log_sfr.isbackup"] = False
         
         # Mass
-        data["lmass"], data["lmass.err"] = self.get_mass()
+        data["lmass"], data["lmass.err"] = self.get_mass(refsize=refsize)
         data["lmass.isbackup"] = not self.has_optical()
         # LsSFR
         if self.has_uv():        
-            data["lssfr"], data["lssfr.err"] = self.get_lssfr()
+            data["lssfr"], data["lssfr.err"] = self.get_lssfr(refsize=refsize)
             # NUV-r
             data["nuvr"],data["nuvr.err"] = self.get_nuvr()
         else:

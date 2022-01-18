@@ -358,7 +358,7 @@ class PS1LocalMass( _Photomatize_ ):
     # ================= #
     #  Special Methods  #
     # ================= #
-    def get_mass(self, radius=None, runits="kpc"):
+    def get_mass(self, radius=None, runits="kpc", refsize=None):
         """ """
         if radius is not None:
             self.measure_photometry(radius=radius,runits=runits)
@@ -366,7 +366,11 @@ class PS1LocalMass( _Photomatize_ ):
         from astrobject.collections import photodiagnostics
         self.mass_estimator = photodiagnostics.get_massestimator([self.photopoints["g"],self.photopoints["i"]])
         self.mass_estimator.draw_samplers(distmpc=self.target.distance.to("Mpc").value)
-        return self.mass_estimator.get_estimate()
+        mass = self.mass_estimator.get_estimate()
+        if refsize is not None:
+            ref_surface = np.pi*refsize**2
+            mass[0] -= np.log10(self.surface.value) - np.log10(ref_surface)
+        return mass
         
     def get_backup_mass(self):
         """ Assuming the mean and the std of the local mass distribution from Rigault et al. 2018"""
