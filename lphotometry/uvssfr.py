@@ -21,14 +21,15 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         """ """
         raise NotImplementedError("You cannot set instrument directly from UVLocalsSFR")
 
-    def measure_photometry(self, radius, runits="kpc"):
+    def measure_photometry(self, radius, runits="kpc", derive_data=True):
         """ """
         _ = self._local_photometry_setup_(radius, runits=runits)
         self.uv.measure_photometry(radius, runits=runits)
         self.optical.measure_photometry(radius, runits=runits)
         # Set the data of this object
         self._data = pandas.concat([self.uv.data, self.optical.data], sort=False)
-        self._derive_parameters_()
+        if derive_data:
+            self._derive_parameters_()
 
     # ================= #
     #  Special Methods  #
@@ -92,8 +93,8 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False, refsize=None):
         """ """
         if radius is not None:
-            self.measure_photometry(radius, runits=runits) # this inclide a get_derived_parameters already
-            return self._derived_data
+            self.measure_photometry(radius, runits=runits, derive_data=False)
+            rebuild = True
             
         if not rebuild and hasattr(self,"_derived_data") and self._derived_data is not None:
             return self._derived_data
