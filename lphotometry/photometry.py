@@ -369,7 +369,7 @@ class PS1LocalMass( _Photomatize_ ):
         mass = self.mass_estimator.get_estimate()
         if refsize is not None:
             ref_surface = np.pi*refsize**2
-            mass[0] -= np.log10(self.surface.value) - np.log10(ref_surface)
+            mass[0] = mass[0] -(np.log10(self.surface.value) - np.log10(ref_surface))
         return mass
         
     def get_backup_mass(self):
