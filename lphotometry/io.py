@@ -40,6 +40,12 @@ COORDINATES =pandas.DataFrame({'SN1981B':[188.623194, 2.199796],
                                   index=["ra","dec"]).T
 
 
+
+def get_riess2022_data():
+    """ """
+    return pandas.read_csv( os.path.join(_SOURCEDIR,"data/riess2022_snlist.csv") )
+
+
 def load_riess_target(sample="riess2016"):
     """ Load the list of target from Riess et al. 2016 """
     if sample == "riess2016":
