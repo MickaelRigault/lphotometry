@@ -45,6 +45,10 @@ def get_riess2022_data():
     """ """
     return pandas.read_csv( os.path.join(_SOURCEDIR,"data/riess2022_snlist.csv") )
 
+def get_rigault2020_data():
+    """ """
+    return pandas.read_csv( os.path.join(_SOURCEDIR, "data/rigault2022_data.csv") )
+
 
 def load_riess_target(sample="riess2016"):
     """ Load the list of target from Riess et al. 2016 """
