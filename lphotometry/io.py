@@ -47,7 +47,7 @@ def get_riess2022_data():
 
 def get_rigault2020_data():
     """ """
-    return pandas.read_csv( os.path.join(_SOURCEDIR, "data/rigault2022_data.csv") )
+    return pandas.read_csv( os.path.join(_SOURCEDIR, "data/rigault2020_data.csv") )
 
 
 def load_riess_target(sample="riess2016"):
