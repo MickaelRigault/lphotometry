@@ -170,7 +170,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
 
     def has_optical(self):
         """ """
-        return len(self.optical.bandnames)>0
+        return self.optical.has_instruments() and len(self.optical.bandnames)>0
     
     @property
     def photopoints(self):

@@ -129,12 +129,16 @@ def get_panstarrs(target, bands=["g","r","i"], forcedl=False, storenew=True, rad
         missing_inst = download_panstarrsinst(target, filters=missing_bands, buffersize=radius_kpc, **kwargs)
         if storenew:
             for band_,inst_ in missing_inst.items():
+                if inst_ is None:
+                    continue
+                
                 fileout = io._panstarrs_filename_(name, band_)
                 os.makedirs(os.path.dirname(fileout), exist_ok=True)
                 inst_.writeto(fileout)
     else:
         missing_inst = {}
 
-    stored_inst = {band_: panstarrs.PanSTARRS(file_, background=background) for band_, file_ in filenames.items() if file_ is not None}
+    stored_inst = {band_: panstarrs.PanSTARRS(file_, background=background)
+                    for band_, file_ in filenames.items() if file_ is not None and os.path.isfile(file_)}
     return {**missing_inst,**stored_inst}
  

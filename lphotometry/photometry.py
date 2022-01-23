@@ -103,6 +103,16 @@ class _Photomatize_( target._TargetHandler_ ):
             
     def set_instrument(self, instrument, label=None, overwrite=False, checkbandname=True):
         """ """
+        if not hasattr(self, "_instruments"):
+            self._instruments = {}
+        
+        if instrument is None:
+            if label is None:
+                raise ValueError("Instrument is not, and label is not given")
+            self._instruments[label] = instrument
+            return
+
+        # - instrument is not None
         if label is None:
             label = instrument.bandname
             
@@ -110,8 +120,6 @@ class _Photomatize_( target._TargetHandler_ ):
             raise ValueError("The given instrument has bandaname=%s and should not be set. Accepted bandnames are: "%instrument.bandname+\
                                  ", ".join(list(self.BANDS.keys())))
         
-        if not hasattr(self, "_instruments"):
-            self._instruments = {}
 
 
         from astrobject import get_target
@@ -340,6 +348,11 @@ class PS1LocalMass( _Photomatize_ ):
         for bandname, g_ in self.instruments.items():
             if verbose:
                 print(g_.filename)
+            if g_ is None:
+                dataout[bandname] = {k:None for k in ["flux","flux.err","mag","mag.errasym","mag.err",
+                                                      "target.x","target.y"]}
+                dataout[bandname]["bandname"] = bandname
+                continue
             ppc = g_.get_target_photopoint(radius, runits=runits, on="data")
             self._photopoints[bandname] = ppc
             gout = ppc.data.copy()
@@ -350,7 +363,7 @@ class PS1LocalMass( _Photomatize_ ):
             gout["mag.err"] = np.mean(ppc.mag_err)
             gout["target.x"],gout["target.y"] = g_.coords_to_pixel(*self.target.radec)
  
-            dataout[ppc.bandname] = gout
+            dataout[bandname] = gout
             
         self._data = pandas.DataFrame(dataout).T
         return self.data
@@ -375,7 +388,11 @@ class PS1LocalMass( _Photomatize_ ):
     def get_backup_mass(self):
         """ Assuming the mean and the std of the local mass distribution from Rigault et al. 2018"""
         return 8.06, 0.58 #from Rigault et al. 2018 (SNfactory data)
-        
+
+    def has_instruments(self):
+        """ Check if any of the instrument is not None """
+        return np.any([img_ is not None for img_ in self.instruments.values()])
+    
 #               #
 #   GALEX       #
 #               #
