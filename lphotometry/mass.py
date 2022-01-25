@@ -93,7 +93,8 @@ class PriorGIColor():
     # --------- #
     def show(self, data_error=None, ax=None, savefile=None,
                  color_data="C0", color_prior="0.2",
-                 color_inferred="C1", posterior_ampl=0.9):
+                 color_inferred="C1", posterior_ampl=0.9,
+                 ncol_legend=4):
         """ """
         import matplotlib.pyplot as mpl
         from matplotlib.colors import to_rgba
@@ -106,12 +107,12 @@ class PriorGIColor():
         
         # - prior
         xx = np.linspace(*self._DEF_RANGE, 1000)
-        ax.plot(xx, self.get_pdf(xx), color=to_rgba(color_prior), lw=1)
+        ax.plot(xx, self.get_pdf(xx), color=to_rgba(color_prior), label="Galaxies")
         
         # - data
         if data_error is not None:
             data, error = data_error
-            ax.axvspan(data-2*error, data+2*error, color=to_rgba(color_data, 0.1))
+            ax.axvspan(data-2*error, data+2*error, color=to_rgba(color_data, 0.1), label="Observed")
             ax.axvspan(data-3*error, data+3*error, color=to_rgba(color_data, 0.1))
         
 
@@ -121,14 +122,15 @@ class PriorGIColor():
             xxpost= np.linspace(data-4*error, data+4*error, 1000)
             ax.plot(xxpost, gposterior(xxpost)/gposterior(xxpost).max()*coef*posterior_ampl, 
                     color=color_inferred, lw=1.5,
-                   label=r"Inferred $g-i$")
+                   label=r"Inferred")
 
         ax.set_xlim(-0.5, 2)
         ax.set_ylim(0)
         ax.set_yticks([])
         
         ax.set_xlabel("g-i [mag]", fontsize="large")
-
+        ax.legend(ncol=ncol_legend, loc=[0,1.],
+                      frameon=False, fontsize='small')
         if savefile is not None:
             fig.savefig(savefile)
             
@@ -254,12 +256,12 @@ class MassEstimator():
     # -------- #
     def show_gicolor(self, ax=None, savefile=None,
                       color_prior="0.2", color_data="C0",
-                      color_posterior="C1", color_inferred=None, **kwargs):
+                      color_inferred="C1", **kwargs):
         """ """
         return self.giprior.show(self.get_gicolor(use_prior=False, size=None),
-                                ax=None, savefile=None,
-                                color_prior="0.2", color_data="C0",
-                                color_inferred="C1",**kwargs)
+                                ax=ax, savefile=savefile,
+                                color_prior=color_prior, color_data=color_data,
+                                color_inferred=color_inferred,**kwargs)
     
     def show_mass(self, ax=None, savefile=None, offset=None,
                       clear_axes=["left","right","top"],

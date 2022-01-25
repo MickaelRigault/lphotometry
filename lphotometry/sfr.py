@@ -72,13 +72,13 @@ class GalexSFREstimator():
         else:
             raise ValueError("only nuv and fuv are accepted")
 
-        if mag:
+        if mag or mag_ is None:
             return mag_, emag_
         
         return tools.mag_to_flux(mag_, emag_, wavelength=self.BANDS[which]["lbda"])
         
     def get_sfr(self, lum_fuv_hz=None, coef=1.08, apply_dustcorr=True, inlog=True,
-                    surface=None, **kwargs):
+                    surface=None, accept_backup=True, **kwargs):
         """ 
         coef = 1.08 if Salim 2007 1.4 for Kennicutt 1998
         
@@ -89,7 +89,8 @@ class GalexSFREstimator():
         -> SFR (M yr−1) = 4.6 × 10−44 × L(FUVcorr), (here L in erg/s/A)
         """
         if lum_fuv_hz is None:
-            lum_fuv_hz = np.asarray( self.get_lfuv(apply_dustcorr=apply_dustcorr, inhz=True,
+            lum_fuv_hz = np.asarray( self.get_lfuv(apply_dustcorr=apply_dustcorr,
+                                                       inhz=True,accept_backup=accept_backup,
                                                        surface=surface, **kwargs)
                                     )
             
@@ -108,9 +109,12 @@ class GalexSFREstimator():
 
     def get_uvcolor(self):
         """ """
+        if self.fuv[0] is None or self.nuv[0] is None:
+            return np.NaN, np.NaN
+        
         return self.fuv[0]-self.nuv[0],np.sqrt(self.fuv[1]**2+self.nuv[1]**2)
     
-    def get_lfuv(self, apply_dustcorr=True, surface=None, inhz=False):
+    def get_lfuv(self, apply_dustcorr=True, surface=None, inhz=False, accept_backup=True):
         """ get the fuv luminosity 
         
         Parameters
@@ -132,61 +136,61 @@ class GalexSFREstimator():
         float, float (value, error)
         """           
         f_fuv, f_fuv_err = self.get_photometry("fuv", mag=False)
+        # -> You don't have FUV data        
+        if f_fuv is None:
+            if not accept_backup:
+                warnings.warn("no fuv and accept_backup is False. NaN returned")
+                return np.NaN, np.NaN
+            
+            lum_fuv, elum_fuv = self.get_nuvbackup_lfuv(size=None)
+            if surface is not None:
+                lum_fuv /= surface
+                elum_fuv /= surface
+            return lum_fuv, elum_fuv
+
+        # -> You have FUV data
         _signal_to_noise = f_fuv_err/f_fuv
         
         if apply_dustcorr:
             f_fuv /= 10**(-0.4*self.get_afuv()[0])
             
-        if surface is not None:
-            f_fuv /= surface
-            
-        lum_fuv = f_fuv*(4*np.pi*self._distcm**2)
-        
         if inhz:
             lum_fuv *= (self.BANDS["fuv"]["lbda"]**2/constants.c.to("AA/s")).value
-                
+                        
+        lum_fuv = f_fuv*(4*np.pi*self._distcm**2)
+        
+        if surface is not None:
+            lum_fuv /= surface
+
         return lum_fuv, lum_fuv*_signal_to_noise
         
 
     #
     # // Backup NUV
     #
-    def get_nuvbackup_sfr(self, uvcolor=None, afuv=None, fullbackup=False,
-                              inlog=True, surface=None, **kwargs):
-        """ 
-        uvcolor = fuv-nuv => fuv = uvcolor+nuv
-        """
+    def get_nuvbackup_lfuv(self, uvcolor=None, afuv=None, size=None):
+        """ """
         if uvcolor is None or afuv is None:
-            uvcolor_, afuv_ = self.uvprior.draw_prior(size=1000)
+            uvcolor_, afuv_ = self.uvprior.draw_prior(size=1000 if size is None else size)
             
         if uvcolor is None:
             uvcolor = uvcolor_
             
         if afuv is None:
             afuv = afuv_
-        
-        backup = {"uvcolor":uvcolor, "afuv":afuv, "surface":surface}
-        sfr, sfrerr = self._measure_single_nuvbackup_sfr_(**{**backup,**kwargs}) 
-
-        # MOVE TO "size=None"
-        if fullbackup:
-            return sfr, sfrerr
-
-        low_, med_, up_ = np.percentile(sfr, [16,50,84])
-        return med_, np.mean([med_-low_,up_-med_ ])
-
-    def _measure_single_nuvbackup_sfr_(self, uvcolor, afuv, fullbackup=False,
-                              inlog=True, surface=None, **kwargs):
-        """ """
+            
+        # - NUV
         mag_nuv,mag_err = self.get_photometry("nuv", mag=True)
+        # -> FUV
         mag_fuv = mag_nuv+uvcolor
+        # -> flux_FUV
         flux_fuv_hz = 10**(-0.4*(mag_fuv - afuv + 48.6))
-        if surface is not None:
-            flux_fuv_hz /= surface
+        # -> lum_fuv
+        f_ = flux_fuv_hz*(4*np.pi*self._distcm**2)
 
-        lum_fuv_hz = flux_fuv_hz*(4*np.pi*self._distcm**2)
-        return self.get_sfr(lum_fuv_hz=np.asarray([lum_fuv_hz,np.NaN]),
-                                inlog=inlog, **kwargs)
+        if size is None:
+            return np.mean(f_), np.std(f_)
+        return f_
 
 
     # -------- #
@@ -245,7 +249,7 @@ class GalexSFREstimator():
     def show_afuv(self, ax=None, savefile=None,
                       color_prior="0.2", color_data="C0",
                       color_posterior="C1", color_inferred=None,
-                      set_legend=True, set_label=True):
+                      set_legend=True, set_label=True, ncol_legend=4):
         """ 
         color_inferred: [string/None] 
             if None, same as color_posterior
@@ -285,8 +289,11 @@ class GalexSFREstimator():
 
 
         # - Inferred
-        
-        x,y = self.uvprior.draw_posterior(*self.get_uvcolor(), size=10000, prior_times=100)
+        colors = self.get_uvcolor()
+        if not np.isnan(colors[0]):
+            x,y = self.uvprior.draw_posterior(*colors, size=10000, prior_times=100)
+        else:
+            x,y = self.uvprior.draw_prior(size=10000)
         # -- Posterior
         _ = tools.confidence_ellipse(x,y, ax=ax, n_std=2,
                                    facecolor=to_rgba(color_posterior, 0.5), edgecolor=to_rgba(color_posterior, 1), lw=0.5,
@@ -294,18 +301,18 @@ class GalexSFREstimator():
         _ = tools.confidence_ellipse(x,y, ax=ax, n_std=3,
                                    facecolor=to_rgba(color_posterior, 0.3), edgecolor=to_rgba(color_posterior, 0.8), lw=0.5
                                     )
-        # -- Posterior on A_fuv
+            # -- Posterior on A_fuv
         yy = np.linspace(-1,5, 1000)
         pdf_ = stats.norm.pdf(yy, loc=np.mean(y), scale=np.std(y)) #gaussian_kde(y)(yy)
         ax.plot(pdf_/10, yy, color=color_inferred, lw=1.5,
-               label=r"Inferred $A_{FUV}$")
+                    label=r"Inferred $A_{FUV}$")
 
 
         ax.set_xlim(0,1.2)
         ax.set_ylim(0,5)
 
         if set_legend:
-            ax.legend(ncol=4, loc=[0,1.], frameon=False, fontsize='small')
+            ax.legend(ncol=ncol_legend, loc=[0,1.], frameon=False, fontsize='small')
             
         if set_label:
             ax.set_ylabel(r"$A_{FUV}$", fontsize="large")

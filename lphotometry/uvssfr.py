@@ -6,12 +6,16 @@
 import warnings
 import pandas
 import numpy as np
+from scipy import stats
 
 from . import photometry, io
 
 
 class UVLocalsSFR( photometry._Photomatize_ ):
     """ """
+    BANDS = {**photometry.UVLocalSFR.BANDS,
+             **photometry.PS1LocalMass.BANDS}
+    
     def load_data(self, **kwargs):
         """ """
         self.uv = photometry.UVLocalSFR.from_target(self.target, **kwargs)
@@ -34,19 +38,23 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     # ================= #
     #  Special Methods  #
     # ================= #
-    def get_lssfr(self, radius=None, runits="kpc", allow_backup=["mass","sfr"], refsize=None, **kwargs):
+    def get_lssfr(self, radius=None, runits="kpc",
+                      accept_backup=["mass","sfr"], refsize=None,
+                      apply_dustcorr=True, **kwargs):
         """ """
-        if allow_backup is None:
-            allow_backup = []
+        if accept_backup is None:
+            accept_backup = []
 
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
             
-        local_mass = self.get_mass(refsize=refsize, allow_backup = "mass" in allow_backup)
-        local_sfr  = self.get_sfr(allow_backup = "sfr" in allow_backup)
+        local_mass = self.get_mass(refsize=refsize, accept_backup = "mass" in accept_backup)
+        local_sfr  = self.get_sfr(apply_dustcorr=apply_dustcorr,
+                                      accept_backup = "sfr" in accept_backup)
+    
         return local_sfr[0] - local_mass[0], np.sqrt(local_sfr[1]**2 + np.mean(local_mass[1:])**2)
         
-    def get_mass(self, radius=None, runits="kpc", allow_backup=True, refsize=None, **kwargs):
+    def get_mass(self, radius=None, runits="kpc", accept_backup=True, refsize=None, **kwargs):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
@@ -56,12 +64,13 @@ class UVLocalsSFR( photometry._Photomatize_ ):
             m, *err = self.optical.get_mass(refsize=refsize, **kwargs)
             return m, np.mean([err])
         
-        elif allow_backup:
+        elif accept_backup:
             return self.optical.get_backup_mass(**kwargs)
         
         return np.NaN,np.NaN
 
-    def get_sfr(self, radius=None, runits="kpc", allow_backup=True, **kwargs):
+    def get_sfr(self, radius=None, runits="kpc", accept_backup=True,
+                    apply_dustcorr=True, **kwargs):
         """ """
         if not self.has_uv():
             return np.NaN,np.NaN
@@ -69,12 +78,8 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
         
-        if self.has_fuv():
-            return self.uv.get_sfr(**kwargs)
-        elif allow_backup:
-            return self.uv.get_nuvbackup_sfr(**kwargs)
-        else:
-            return np.NaN,np.NaN
+        return self.uv.get_sfr(apply_dustcorr=apply_dustcorr,
+                                   accept_backup=accept_backup,  **kwargs)
             
     def get_nuvr(self,radius=None, runits="kpc"):
         """ """
@@ -149,7 +154,152 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     def _derive_parameters_(self):
         """ """
         self._derived_data = self.get_derived_parameters(rebuild=True)
+
+
+    def show(self, savefile=None):
+        """ """
+        import matplotlib.pyplot as mpl
+        fig = mpl.figure(figsize=[10,7])
         
+        instrumentnames = [k for k in self.instruments.keys() if "_" not in k]
+        ninstruments = len(instrumentnames)
+
+        # - Stamps
+        LEFT = 0.05
+        RIGHT = 0.0
+        TOP = 0.05
+        BOTTOM =0.08
+
+        _TOTAL_WIDTH = 1-(LEFT+RIGHT)
+        _TOTAL_HEIGTH = 1-(TOP+BOTTOM)
+
+        spanx = 0.02
+        width = _TOTAL_WIDTH/ninstruments - spanx 
+        fullwidth = _TOTAL_WIDTH + spanx*(ninstruments-1)
+
+        bottom_stamp = 0.72
+
+        axstamps = []
+        for i,band  in enumerate(instrumentnames):
+            axstamps.append( fig.add_axes([LEFT+i*(width+spanx),bottom_stamp,width,1-TOP-bottom_stamp]) )
+
+
+        width_colors = 0.275
+        bottom_colors = 0.38
+        spancolor=0.051
+        ax_afuv = fig.add_axes([LEFT, bottom_colors, width_colors, 0.25])
+        ax_nuvr = fig.add_axes([LEFT+1*(width_colors+spancolor), bottom_colors, width_colors, 0.25])
+        ax_gi   = fig.add_axes([LEFT+2*(width_colors+spancolor), bottom_colors, width_colors, 0.25])
+
+        ax_sfr  = fig.add_axes([LEFT, BOTTOM+0.1+0.05, 0.45-LEFT, 0.06])
+        ax_mass = fig.add_axes([LEFT, BOTTOM, 0.45-LEFT,          0.06])
+        ax_lssfr = fig.add_axes([0.55, BOTTOM, 0.475-LEFT, 0.075*2+0.05])
+
+
+        _ = self.show_stamps(ax=axstamps)
+        #
+        _ = self.uv.show_afuv(ax=ax_afuv, ncol_legend=2)
+        _ = self.show_nuvr(ax=ax_nuvr)
+        _ = self.optical.show_gicolor(ax=ax_gi, ncol_legend=2)
+        #
+        _ = self.uv.show_sfr(ax=ax_sfr, color="tab:blue")
+        _ = self.optical.show_mass(ax=ax_mass, color="tab:red")
+        _ = self.show_lssfr(ax=ax_lssfr, color="tab:purple")
+
+        [ax_.set_xlabel(ax_.get_xlabel(), fontsize="medium") for ax_ in fig.axes]
+        [ax_.set_ylabel(ax_.get_ylabel(), fontsize="medium") for ax_ in fig.axes]
+
+        [ax_.tick_params(labelsize="small") for ax_ in fig.axes]
+
+        if savefile is not None:
+            fig.savefig(savefile)
+        return fig
+
+        
+    def show_nuvr(self, ax=None):
+        """ """
+        import matplotlib.pyplot as mpl
+        from .nuvrcolor import NUVRPrior
+
+        if ax is None:
+            fig = mpl.figure(figsize=[6,4])
+            ax  = fig.add_axes([0.15,0.15,0.75,0.75])
+        else:
+            fig = ax.figure
+
+        nuvr_p = NUVRPrior()#.show(ax=ax)
+        _ = nuvr_p.show(ax=ax, show_details=True)
+
+        nuvr_,enuvr_  = self.get_nuvr()
+
+        ax.axvspan(nuvr_-3*enuvr_, nuvr_+3*enuvr_, facecolor="C0", alpha=0.1, edgecolor="None", label="Observed")
+        ax.axvspan(nuvr_-2*enuvr_, nuvr_+2*enuvr_, facecolor="C0", alpha=0.1, edgecolor="None")
+        ax.set_xlabel("NUV-r [mag]", fontsize="large")
+        _ = ax.set_yticks([])
+
+        ax.set_xlim(0,9)
+        ax.legend(ncol=4, loc=[0,1.], frameon=False, fontsize='small')
+        return fig
+
+
+    def show_lssfr(self, ax=None, savefile=None, offset=None,
+                        clear_axes=["left","right","top"],
+                        color="purple", color_nodust=None, set_label=True, r13_color="k"):
+        """ 
+        if color_nodust is None: color_nodust=color with alpha 0.2
+
+        r13_color is None, no line
+        """
+        import matplotlib.pyplot as mpl
+        from matplotlib.colors import to_rgba
+        if ax is None:
+            fig = mpl.figure(figsize=[6,3])
+            ax = fig.add_axes([0.1,0.25,0.8,0.7])
+        else:
+            fig = ax.figure
+
+        if color_nodust is None:
+            color_nodust = to_rgba(color, 0.1)
+
+        _lssfr = self.get_lssfr()
+        _lssfr_nodust = self.get_lssfr(apply_dustcorr=False)
+
+        yy = np.linspace(_lssfr_nodust[0]-4*_lssfr_nodust[1],
+                         _lssfr_nodust[0]+4*_lssfr_nodust[1], 100)
+        ax.fill_between(yy, stats.norm.pdf(yy, *_lssfr_nodust), 
+                            facecolor=color_nodust, label="no dust correction")
+
+        yy = np.linspace(_lssfr[0]-4*_lssfr[1],
+                         _lssfr[0]+4*_lssfr[1], 100)
+
+        pdf_ = stats.norm.pdf(yy, *_lssfr)
+        ax.plot(yy, pdf_, color=color, 
+                lw=1.5)
+
+        if r13_color is not None:
+            ax.axvline(-10.82, lw=1, color=r13_color, ls="--")
+            #top_value = pdf_.max()
+            #ax.text(-10.82+0.01, top_value, "prompt", rotation=90, 
+            #        va="top", ha="left", fontsize="x-small")
+            #ax.text(-10.82-0.01, 0.05*top_value, "delayed", rotation=90, 
+            #        va="bottom", ha="right", fontsize="x-small")
+
+        ax.set_ylim(0)
+
+        if set_label:
+            ax.set_xlabel(r"$\log(\mathrm{local\, sSFR})$", fontsize="large")
+
+        if clear_axes is not None:
+            [ax.spines[which].set_visible(False) for which in clear_axes]
+
+        ax.set_yticks([])
+
+
+
+        if savefile is not None:
+            fig.savefig(savefile)
+
+        return fig   
     # ============= #
     #  Properties   #
     # ============= #

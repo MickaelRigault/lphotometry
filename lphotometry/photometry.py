@@ -127,7 +127,7 @@ class _Photomatize_( target._TargetHandler_ ):
     #  GETTER   #
     # --------- #        
     def get_photometry(self, band, radius=None, runits='kpc',
-                           mag=True, full=False, error_floor=None):
+                           mag=True, full=False, error_floor="default"):
         """ Get the photometry as stored in the self.data 
         note: you need to have run measure_photomtery() 
 
@@ -151,7 +151,7 @@ class _Photomatize_( target._TargetHandler_ ):
                            -> e_flux = np.sqrt( e_flux_orig**2 + efloor**2)
 
             If error_floor is None: this is ignored.
-            
+            If error_floor is default, that defined in self.BANDS[band][error_floor] is used
         """
         
         print(" = missing MW CORR =")
@@ -167,6 +167,10 @@ class _Photomatize_( target._TargetHandler_ ):
             return np.NaN, np.NaN
         
         db = self.data[self.data["bandname"]==band]
+        if db.size == 0:
+            warnings.warn(f"no data associated to {band}")
+            return None, None
+            
         key = "mag" if mag else "flux"
         if not full:
             if len(db[key])>1:
@@ -177,6 +181,16 @@ class _Photomatize_( target._TargetHandler_ ):
                 mean_,mean_err = np.asarray(db[[key,key+".err"]].values[0], dtype="float")
         else:
             mean_,mean_err = db[[key,key+".err"]]
+
+        if error_floor == "default":
+            if not hasattr(self,"BANDS"):
+                warnings.warn("self.BANDS is not defined. No default error_floor")
+                error_floor = None
+                
+            error_floor = self.BANDS.get(band, {}).get("error_floor", "_backup_None")
+            if error_floor == "_backup_None":
+                warnings.warn(r"no error_floor set for {band}.")
+                error_floor = None
 
         if error_floor is not None:
             if not mag:
@@ -205,7 +219,8 @@ class _Photomatize_( target._TargetHandler_ ):
         
 
 
-    def show_stamps(self, savefile=None, figsize=None, colorbase="white", radius_kpc=10,
+    def show_stamps(self, ax=None, savefile=None, figsize=None, colorbase="white",
+                        radius_kpc=10,
                         linecolor="w", textcolor="0.9", vmin="1",vmax="99",
                         stretching="arcsinh", **kwargs):
         """ 
@@ -263,18 +278,23 @@ class _Photomatize_( target._TargetHandler_ ):
         if figsize is None:
             figsize = [2*ninstruments,2]
 
+        if ax is None:
+            fig = mpl.figure( figsize=figsize )
+            width, spanx = 0.8/ninstruments, 0.02
+            fullwidth = 0.8 + spanx*(ninstruments-1)
+            edges = 1-fullwidth
 
-        fig = mpl.figure( figsize=figsize )
-        width, spanx = 0.8/ninstruments, 0.02
-        fullwidth = 0.8 + spanx*(ninstruments-1)
-        edges = 1-fullwidth
-        ax = {}
-        for i,band  in enumerate(instrumentnames):
-            ax[band] = fig.add_axes([edges/2+i*(width+spanx),0.15,width,0.75])
-
+            ax = []
+            for i,band  in enumerate(instrumentnames):
+                ax.append(fig.add_axes([edges/2+i*(width+spanx),0.15,width,0.75]))
+        else:
+            fig = ax[0].figure
+            
         prop = {**dict( origin="lower"), **kwargs}
 
-        for band in instrumentnames:
+        for i, band in enumerate(instrumentnames):
+            ax_ = ax[i]
+            
             if radius_kpc is not None:
                 centroid, data = self.get_localdata(band, radius_kpc, "kpc")
             else:
@@ -284,32 +304,32 @@ class _Photomatize_( target._TargetHandler_ ):
 
             # - No Data
             if data is None:
-                ax[band].text(0.5,0.5, f"no {band} band", va="center",ha="center", 
-                          transform=ax[band].transAxes, color=CMAPS[band](0.5), fontsize="medium")
+                ax_.text(0.5,0.5, f"no {band} band", va="center",ha="center", 
+                          transform=ax_.transAxes, color=CMAPS[band](0.5), fontsize="medium")
                 continue
             
             # - Data                
             if stretching is not None:
                 data = getattr(np,stretching)(data)
             vmin_, vmax_ = parse_vmin_vmax(data, vmin, vmax)
-            ax[band].imshow( data, vmin=vmin_, vmax=vmax_, cmap=CMAPS[band], **prop)
+            ax_.imshow( data, vmin=vmin_, vmax=vmax_, cmap=CMAPS[band], **prop)
 
             arcsec_kpc = self.get_instrument(band).units_to_pixels( "kpc" ).value
-            ax[band].add_patch( 
+            ax_.add_patch( 
                     Circle(centroid, radius = 1*arcsec_kpc,
                       facecolor="None", edgecolor=linecolor, lw=1.5)
                     )
-            ax[band].add_patch( 
+            ax_.add_patch( 
                     Circle(centroid, radius = 3*arcsec_kpc,
                       facecolor="None", edgecolor=linecolor, lw=0.5, ls="--")
                     )
-            ax[band].text(0.02,0.98, f"{band}", va="top",ha="left", 
-                          transform=ax[band].transAxes, color=textcolor, fontsize="small")
+            ax_.text(0.02,0.98, f"{band}", va="top",ha="left", 
+                          transform=ax_.transAxes, color=textcolor, fontsize="small")
 
-        [ax.set_yticks([]) for ax in fig.axes]
-        [ax.set_xticks([]) for ax in fig.axes]
+        [ax_.set_yticks([]) for ax_ in ax]
+        [ax_.set_xticks([]) for ax_ in ax]
 
-        fig.axes[0].set_ylabel(self.target.name)
+        ax[0].set_ylabel(self.target.name)
 
         if savefile is not None:
             fig.savefig(savefile)
@@ -400,8 +420,8 @@ class PS1LocalMass( _Photomatize_ ):
             self.measure_photometry(radius=radius,runits=runits)
 
         from .mass import MassEstimator
-        gmag = self.get_photometry("ps1.g", mag=True, error_floor=self.BANDS["ps1.g"]["error_floor"])
-        imag = self.get_photometry("ps1.i", mag=True, error_floor=self.BANDS["ps1.g"]["error_floor"])
+        gmag = self.get_photometry("ps1.g", mag=True)
+        imag = self.get_photometry("ps1.i", mag=True)
         return MassEstimator(gmag=gmag, imag=imag, distmpc=self.target.distmpc)
 
     def get_mass(self, radius=None, runits="kpc", refsize=None, **kwargs):
@@ -440,11 +460,11 @@ class PS1LocalMass( _Photomatize_ ):
 
     def show_gicolor(self, ax=None, savefile=None,
                       color_prior="0.2", color_data="C0",
-                      color_posterior="C1", color_inferred=None, **kwargs):
+                      color_inferred="C1", **kwargs):
         """ """
         return self.mass_estimator.show_gicolor( ax=ax, savefile=savefile,
                                                  color_prior=color_prior, color_data=color_data,
-                                                 color_posterior=color_posterior, color_inferred=color_inferred,
+                                                 color_inferred=color_inferred,
                                                  **kwargs)
     
     # ================== #
@@ -525,8 +545,8 @@ class UVLocalSFR( _Photomatize_ ):
             self.measure_photometry(radius=radius,runits=runits)
 
         from .sfr import GalexSFREstimator
-        nuv = self.get_photometry("nuv", mag=True, error_floor=self.BANDS["nuv"]["error_floor"])
-        fuv = self.get_photometry("fuv", mag=True, error_floor=self.BANDS["fuv"]["error_floor"])
+        nuv = self.get_photometry("nuv", mag=True)
+        fuv = self.get_photometry("fuv", mag=True)
         return GalexSFREstimator(fuv=fuv, nuv=nuv, distmpc=self.target.distmpc)
 
     def get_sfr(self, radius=None, runits="kpc", **kwargs):
@@ -536,7 +556,13 @@ class UVLocalSFR( _Photomatize_ ):
 
         return self.sfr_estimator.get_sfr(surface=self.surface.value, **kwargs)
 
+    def get_nuvbackup_sfr(self, radius=None, runits="kpc", **kwargs):
+        """ """
+        if radius is not None:
+            self.measure_photometry(radius=radius,runits=runits)
 
+        return self.sfr_estimator.get_nuvbackup_sfr(surface=self.surface.value, **kwargs)
+    
     def show_sfr(self, ax=None, savefile=None,
                        clear_axes=["left","right","top"],
                        color="purple", color_nodust=None,
