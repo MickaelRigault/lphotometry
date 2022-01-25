@@ -11,7 +11,7 @@ MAINTAINER_EMAIL = 'm.rigault@ipnl.in2p3.fr'
 URL = 'https://github.com/MickaelRigault/lphotometry'
 LICENSE = 'BSD (3-clause)'
 DOWNLOAD_URL = 'https://github.com/MickaelRigault/lphotometry'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 
 try:
     from setuptools import setup, find_packages
@@ -59,7 +59,7 @@ if __name__ == "__main__":
           download_url=DOWNLOAD_URL,
           install_requires=install_requires,
           packages=packages,
-          package_data={"lphotometry":["data/*"]},#, 'data/*'
+          package_data={"lphotometry":["data/*","data/figures/*" ]},#, 'data/*'
           classifiers=[
               'Intended Audience :: Science/Research',
               'Programming Language :: Python :: 3.6',

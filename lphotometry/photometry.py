@@ -25,17 +25,6 @@ GALEXQUERY = query.GALEXQuery()
 #                         #
 # ======================= #
 
-def salim_afuv(uvcolor, use_sfcurve=True, squeeze=True):
-    """ uvcolor = FUV-NUV restframe see Salim et al. 2007 """
-    coef, offset,cut, backup = (3.32, 0.22, 0.95, 3.37) if use_sfcurve else \
-                               (2.99, 0.27, 0.90, 2.96)
-                               
-    uvc = np.atleast_1d(uvcolor)
-    afuv_base = coef*uvc + offset
-    afuv_base[uvc>cut] = backup
-    
-    return np.squeeze(afuv_base) if squeeze else afuv_base
-    
 
 # ======================= #
 #                         #
@@ -138,7 +127,7 @@ class _Photomatize_( target._TargetHandler_ ):
     #  GETTER   #
     # --------- #        
     def get_photometry(self, band, radius=None, runits='kpc',
-                           mag=True, full=False):
+                           mag=True, full=False, error_floor=None):
         """ Get the photometry as stored in the self.data 
         note: you need to have run measure_photomtery() 
 
@@ -151,7 +140,22 @@ class _Photomatize_( target._TargetHandler_ ):
             provide the radius of the local photometry.
             If None, this will use the current data measured with self.measure_photometry().
             If given, this will re measure the photometry (and update self.data)
+
+        error_floor: [float] -optional
+            error floor to add to the data. This error will be added quadradively.
+
+            - if mag=True: error_floor is understood in magnitude
+                           -> e_mag = np.sqrt(e_mag_orig**2 + error_floor**2)
+            - if mag=False: (so flux) error_floor is understood as fraction of flux
+                           -> efloor = flux*error_floor
+                           -> e_flux = np.sqrt( e_flux_orig**2 + efloor**2)
+
+            If error_floor is None: this is ignored.
+            
         """
+        
+        print(" = missing MW CORR =")
+        
         if not self.has_data():
             if radius is None:
                 raise ValueError("No local_photometry measured ('self.measure_photometry()') and no radius given")
@@ -168,20 +172,32 @@ class _Photomatize_( target._TargetHandler_ ):
             if len(db[key])>1:
                 mean_ = np.average(db[key],weights=1/db[key+".err"]**2)
                 mean_err = np.sqrt(1/np.sum(1/db[key+".err"]**2))
-                return mean_,mean_err
             
-            return np.asarray(db[[key,key+".err"]].values[0], dtype="float")
-        
-        return db[[key,key+".err"]]
+            else:
+                mean_,mean_err = np.asarray(db[[key,key+".err"]].values[0], dtype="float")
+        else:
+            mean_,mean_err = db[[key,key+".err"]]
 
+        if error_floor is not None:
+            if not mag:
+                error_floor = mean_*error_floor
+            mean_err = np.sqrt(mean_err**2 + error_floor**2)
+
+        return mean_,mean_err
+    
     def get_instrument(self, bandname):
         """ get a copy on the instrument """
-        return self.instruments[bandname].copy()
+        img = self.instruments[bandname]
+        if img is None:
+            return None
+        return img.copy()
 
 
     def get_localdata(self, band, radius, runits="kpc", **kwargs):
         """ get the image center on the target coordinate (radius = half the square size) """
         instru = self.get_instrument(band, **kwargs)
+        if instru is None:
+            return [np.NaN, np.NaN], None
         size_pixels = radius * instru.units_to_pixels( runits ).value
         xpix, ypix = instru.coords_to_pixel(instru.target.ra, instru.target.dec)
         ymin,ymax,xmin,xmax = int(np.rint(ypix-size_pixels)),int(np.rint(ypix+size_pixels)), int(np.rint(xpix-size_pixels)),int(np.rint(xpix+size_pixels))
@@ -211,9 +227,6 @@ class _Photomatize_( target._TargetHandler_ ):
             The vmin and vmax options are applied on the stretched data.
             If None, no stretching applied.
         """
-
-
-
         import matplotlib.pyplot as mpl
         from matplotlib.patches import Circle
         from .tools import parse_vmin_vmax
@@ -261,14 +274,21 @@ class _Photomatize_( target._TargetHandler_ ):
 
         prop = {**dict( origin="lower"), **kwargs}
 
-        for band in self.instruments.keys():
+        for band in instrumentnames:
             if radius_kpc is not None:
                 centroid, data = self.get_localdata(band, radius_kpc, "kpc")
             else:
                 instru = self.get_instrument(band)
                 data  = instru.data
                 centroid = instru.coords_to_pixel(*self.target.radec)
-                
+
+            # - No Data
+            if data is None:
+                ax[band].text(0.5,0.5, f"no {band} band", va="center",ha="center", 
+                          transform=ax[band].transAxes, color=CMAPS[band](0.5), fontsize="medium")
+                continue
+            
+            # - Data                
             if stretching is not None:
                 data = getattr(np,stretching)(data)
             vmin_, vmax_ = parse_vmin_vmax(data, vmin, vmax)
@@ -292,7 +312,8 @@ class _Photomatize_( target._TargetHandler_ ):
         fig.axes[0].set_ylabel(self.target.name)
 
         if savefile is not None:
-            fig.savefig(savefile)    
+            fig.savefig(savefile)
+            
     # ============= #
     #  Properties   #
     # ============= #
@@ -314,6 +335,7 @@ class _Photomatize_( target._TargetHandler_ ):
             raise AttributeError("No data measured. run measure_photometry()")
         return self._photopoints
 
+    
     @property
     def bandnames(self):
         """ """
@@ -333,13 +355,13 @@ class _Photomatize_( target._TargetHandler_ ):
 
 class PS1LocalMass( _Photomatize_ ):
 
-    BANDS = {"ps1.g":{"lbda":4866.457871},
-             "ps1.r":{"lbda":6214.623038},
-             "ps1.i":{"lbda":7544.570357},
+    BANDS = {"ps1.g":{"lbda":4866.457871, "error_floor":0.03},
+             "ps1.r":{"lbda":6214.623038, "error_floor":0.03},
+             "ps1.i":{"lbda":7544.570357, "error_floor":0.03}
             }
 
     INSTNAME = "panstarrs"
-
+    
     def measure_photometry(self, radius, runits="kpc", verbose=False):
         """ """
         radius, runits = self._local_photometry_setup_(radius, runits=runits)
@@ -366,40 +388,86 @@ class PS1LocalMass( _Photomatize_ ):
             dataout[bandname] = gout
             
         self._data = pandas.DataFrame(dataout).T
+        self._mass_estimator = None # clearit
         return self.data
-    
-    # ================= #
-    #  Special Methods  #
-    # ================= #
-    def get_mass(self, radius=None, runits="kpc", refsize=None):
+
+    # -------- #
+    #  GETTER  #
+    # -------- #
+    def get_mass_estimator(self, radius=None, runits="kpc"):
         """ """
         if radius is not None:
             self.measure_photometry(radius=radius,runits=runits)
-            
-        from astrobject.collections import photodiagnostics
-        self.mass_estimator = photodiagnostics.get_massestimator([self.photopoints["g"],self.photopoints["i"]])
-        self.mass_estimator.draw_samplers(distmpc=self.target.distance.to("Mpc").value)
-        mass, *err = self.mass_estimator.get_estimate()
-        if refsize is not None:
-            ref_surface = np.pi*refsize**2
-            mass -= (np.log10(self.surface.value) - np.log10(ref_surface))
-        return mass, *err
+
+        from .mass import MassEstimator
+        gmag = self.get_photometry("ps1.g", mag=True, error_floor=self.BANDS["ps1.g"]["error_floor"])
+        imag = self.get_photometry("ps1.i", mag=True, error_floor=self.BANDS["ps1.g"]["error_floor"])
+        return MassEstimator(gmag=gmag, imag=imag, distmpc=self.target.distmpc)
+
+    def get_mass(self, radius=None, runits="kpc", refsize=None, **kwargs):
+        """ """
+        if radius is not None:
+            self.measure_photometry(radius=radius,runits=runits)
+
+        offset=self._get_surface_offset_(refsize)
+        return self.mass_estimator.get_mass(offset=offset, **kwargs)
         
     def get_backup_mass(self):
         """ Assuming the mean and the std of the local mass distribution from Rigault et al. 2018"""
         return 8.06, 0.58 #from Rigault et al. 2018 (SNfactory data)
 
+    def _get_surface_offset_(self, refsize):
+        """ """
+        if refsize is None:
+            return refsize
+        return np.log10( self.surface.value/(np.pi*refsize**2) )
+    
+    # -------- #
+    # PLOTTERS #
+    # -------- #
+    def show_mass(self, ax=None, savefile=None, refsize=None,
+                      clear_axes=["left","right","top"],
+                      color="purple", color_nodust=None, set_label=True, r13_color="k",
+                      **kwargs):
+        """ """
+        offset=self._get_surface_offset_(refsize)
+        return self.mass_estimator.show_mass(offset=offset,
+                                             ax=ax, savefile=savefile, 
+                                             clear_axes=clear_axes,
+                                             color=color, color_nodust=color_nodust,
+                                             set_label=set_label, r13_color=r13_color)
+        
+
+    def show_gicolor(self, ax=None, savefile=None,
+                      color_prior="0.2", color_data="C0",
+                      color_posterior="C1", color_inferred=None, **kwargs):
+        """ """
+        return self.mass_estimator.show_gicolor( ax=ax, savefile=savefile,
+                                                 color_prior=color_prior, color_data=color_data,
+                                                 color_posterior=color_posterior, color_inferred=color_inferred,
+                                                 **kwargs)
+    
+    # ================== #
+    #   Properties       #
+    # ================== #
     def has_instruments(self):
         """ Check if any of the instrument is not None """
         return np.any([img_ is not None for img_ in self.instruments.values()])
-    
+
+    @property
+    def mass_estimator(self):
+        """ """
+        if not hasattr(self, "_mass_estimator") or self._mass_estimator is None:
+            self._mass_estimator = self.get_mass_estimator()
+        return self._mass_estimator
+            
 #               #
 #   GALEX       #
 #               #
 class UVLocalSFR( _Photomatize_ ):
     """ """
-    BANDS = {"nuv":{"lbda":2315.66},
-             "fuv":{"lbda":1538.62},
+    BANDS = {"nuv":{"lbda":2315.66, "error_floor":None},
+             "fuv":{"lbda":1538.62, "error_floor":None},
             }
         
     INSTNAME = "galex"
@@ -430,6 +498,7 @@ class UVLocalSFR( _Photomatize_ ):
             dataout[label_] = gout
             
         self._data = pandas.DataFrame(dataout).T
+        self._sfr_estimator = None
         return self.data
 
     # ------ #
@@ -446,187 +515,61 @@ class UVLocalSFR( _Photomatize_ ):
             raise ValueError("which can only be deepest or shallowest")
         
         return self.instruments[selected_filename]
-    
-    # ================= #
-    #  Special Methods  #
-    # ================= #
-    def get_sfr(self, lum_fuv_hz=None, coef=1.08, apply_dustcorr=True, inlog=True,
-                    radius=None, runits="kpc", **kwargs):
-        """ 
-        coef = 1.08 if Salim 2007 1.4 for Kennicutt 1998
-        
-        lum_fuv_hz if provided, in erg/s/cm2/Hz-1
 
-        Could also be implemented:
-        https://www.aanda.org/articles/aa/pdf/2015/12/aa26023-15.pdf
-        -> SFR (M yr−1) = 4.6 × 10−44 × L(FUVcorr), (here L in erg/s/A)
-        """
-        if lum_fuv_hz is None:
-            lum_fuv_hz = np.asarray( self.get_lfuv(apply_dustcorr=apply_dustcorr, inhz=True,
-                                                       radius=radius, runits=runits, **kwargs)
-                                         )
-            
-        sfr, sfr_err = coef*1e-28*lum_fuv_hz
-        if not inlog:
-            return sfr, sfr_err
-        
-        return np.log10(sfr),  1/np.log(10) * sfr_err/sfr
-    
-    def get_lfuv(self, apply_dustcorr=True, surface_density=True, inhz=False,
-                     radius=None, runits="kpc"):
-        """ get the fuv luminosity 
-        
-        Parameters
-        ----------
-        apply_dustcorr: [bool] -optional-
-            Shall the magnitude be corrected for host interstellar dust.
-            This is based on the uv color (see self.get_afuv()).
-            Careful: This should only be applied if you think there indeed is dust.
-
-        surface_density: [bool] -optional-
-            Shall the returned luminosity be a surface brightness lumonisity.
-            (see f/(4*pi*r^2) )
-
-        inhz: [bool] -optional-
-            unit in hz (not AA)
-
-        Returns
-        -------
-        float, float (value, error)
-        """
+    # -------- #
+    #  GETTER  #
+    # -------- #
+    def get_sfr_estimator(self, radius=None, runits="kpc"):
+        """ """
         if radius is not None:
-            self.measure_photometry(radius, runits=runits)
-            
-        print(" = missing MW CORR =")
-        
-        f_fuv, f_fuv_err = self.get_photometry("fuv", mag=False)
-        _signal_to_noise = f_fuv_err/f_fuv
-        
-        if apply_dustcorr:
-            f_fuv /= 10**(-0.4*self.get_afuv()[0])
-            
-        if surface_density:
-            f_fuv /= self.surface.value
-            
-        lum_fuv = f_fuv*(4*np.pi*self.target.distance.to("cm").value**2)
-        
-        if inhz:
-            lum_fuv *= (self.BANDS["fuv"]["lbda"]**2/constants.c.to("AA/s")).value
-                
-        return lum_fuv, lum_fuv*_signal_to_noise
-        
-    def get_afuv(self, from_prior=True, **kwargs):
-        """ Measure the expected FUV absoption assuming Salim et al. 2007 relation based on fuv-nuv color. """
-        if not from_prior:
-            return salim_afuv(self.get_uvcolor()[0],**kwargs), None
-        
-        return self.uvprior.get_afuv(*self.get_uvcolor())
+            self.measure_photometry(radius=radius,runits=runits)
 
-    def get_uvcolor(self):
+        from .sfr import GalexSFREstimator
+        nuv = self.get_photometry("nuv", mag=True, error_floor=self.BANDS["nuv"]["error_floor"])
+        fuv = self.get_photometry("fuv", mag=True, error_floor=self.BANDS["fuv"]["error_floor"])
+        return GalexSFREstimator(fuv=fuv, nuv=nuv, distmpc=self.target.distmpc)
+
+    def get_sfr(self, radius=None, runits="kpc", **kwargs):
         """ """
-        nuv = self.get_photometry("nuv", mag=True)
-        fuv = self.get_photometry("fuv", mag=True)
-        return fuv[0]-nuv[0],np.sqrt(fuv[1]**2+nuv[1]**2)
-    #
-    # // Backup NUV
-    #
-    def get_nuvbackup_sfr(self, radius=None, runits="kpc",
-                              uvcolor=None, afuv=None, fullbackup=False,
-                              inlog=True, surface_density=True, **kwargs):
-        """ 
-        uvcolor = fuv-nuv => fuv = uvcolor+nuv
-        """
         if radius is not None:
-            self.measure_photometry(radius, runits=runits)
+            self.measure_photometry(radius=radius,runits=runits)
 
-        print("missing MW CORR")
-        if uvcolor is None or afuv is None:
-            uvcolor_, afuv_ = self.draw_uvcolor_afuv(1000)
-        if uvcolor is None:
-            uvcolor = uvcolor_
-        if afuv is None:
-            afuv = afuv_
-        
-        backup = {"uvcolor":uvcolor, "afuv":afuv}
-        sfr, sfrerr = self._measure_single_nuvbackup_sfr_(**{**backup,**kwargs})
-        if fullbackup:
-            return sfr, sfrerr
-        low_, med_, up_ = np.percentile(sfr, [16,50,84])
-        return med_, np.mean([med_-low_,up_-med_ ])
+        return self.sfr_estimator.get_sfr(surface=self.surface.value, **kwargs)
 
-    def _measure_single_nuvbackup_sfr_(self, uvcolor, afuv, fullbackup=False,
-                              inlog=True, surface_density=True, **kwargs):
+
+    def show_sfr(self, ax=None, savefile=None,
+                       clear_axes=["left","right","top"],
+                       color="purple", color_nodust=None,
+                     set_label=True, r13_color="k", **kwargs):
         """ """
-        mag_nuv,mag_err = self.get_photometry("nuv", mag=True)
-        mag_fuv = mag_nuv+uvcolor
-        flux_fuv_hz = 10**(-0.4*(mag_fuv - afuv + 48.6))
-        if surface_density:
-            flux_fuv_hz /= self.surface.value
-
-        lum_fuv_hz = flux_fuv_hz*(4*np.pi*self.target.distance.to("cm").value**2)
-        return self.get_sfr(lum_fuv_hz=np.asarray([lum_fuv_hz,np.NaN]), inlog=inlog, **kwargs)
-
-    def draw_uvcolor_afuv(self, size=100, **kwargs):
+        surface = self.surface.value
+        return self.sfr_estimator.show_sfr( ax=ax, savefile=savefile, surface=surface,
+                                            clear_axes=clear_axes,
+                                            color=color, color_nodust=color_nodust,
+                                            set_label=set_label, r13_color=r13_color, **kwargs)
+    
+    def show_afuv(self, ax=None, savefile=None,
+                        color_prior="0.2", color_data="C0",
+                        color_posterior="C1", color_inferred=None,
+                        set_legend=True, set_label=True,
+                      **kwargs):
         """ """
-        return self.uvprior.draw_prior(size,**kwargs)
-        
-    # ============= #
-    #  Properties   #
-    # ============= #
+        return self.sfr_estimator.show_afuv(ax=ax, savefile=savefile,
+                                            color_prior=color_prior, color_data=color_data,
+                                            color_posterior=color_posterior, color_inferred=color_inferred,
+                                            set_legend=set_legend, set_label=set_label,
+                                            **kwargs)
+    
+    # ================== #
+    #   Properties       #
+    # ================== #
+    def has_instruments(self):
+        """ Check if any of the instrument is not None """
+        return np.any([img_ is not None for img_ in self.instruments.values()])
+
     @property
-    def uvprior(self):
+    def sfr_estimator(self):
         """ """
-        if not hasattr(self,"_uvprior"):
-            self._uvprior = UVPrior()
-        return self._uvprior
-    
-
-class UVPrior():
-    """ """
-    _DEFAULT_PARAM = dict(mean_uvcol=0.5, mean_afuv=1.8, sigma_uvcol=0.15, sigma_afuv=0.55, rho=0.87)
-
-    def draw_prior(self, size, **kwargs):
-        """ """
-        mean_uvcol, mean_afuv, sigma_uvcol, sigma_afuv, rho = self._read_kwargs_()
-        return stats.multivariate_normal(mean=[mean_uvcol,mean_afuv],
-                                        cov=[[sigma_uvcol**2,rho*sigma_afuv*sigma_uvcol],
-                                        [rho*sigma_afuv*sigma_uvcol, sigma_afuv**2]]).rvs(size).T
-    
-    def _read_kwargs_(self, **kwargs):
-        """ """
-        prop = {**self._DEFAULT_PARAM,**kwargs}
-        return [prop[k] for k in ["mean_uvcol","mean_afuv","sigma_uvcol","sigma_afuv","rho"]]
-
-    def get_afuv(self, uvcolor, uvcolor_err, **kwargs):
-        """ """
-        posterior = self.draw_posterior(uvcolor, uvcolor_err, **kwargs)
-        return np.mean(posterior[1]), np.std(posterior[1])
-
-    def draw_posterior(self, uvcolor, uvcolor_err, size=1000, which="afuv", **kwargs):
-        """ """
-        ndraw_prior= size*10
-        prior_uvcolor_afuv = self.draw_prior(ndraw_prior, **kwargs)
-        
-        post_uvcolor = stats.norm.pdf(prior_uvcolor_afuv[0],
-                                            loc=uvcolor, scale=uvcolor_err)
-        rand_index = np.random.choice(np.arange(ndraw_prior), size=size,
-                                          p=post_uvcolor/post_uvcolor.sum())
-        return prior_uvcolor_afuv.T[rand_index].T
-        
-
-    def show(self, data=None):
-        """ """
-        import matplotlib.pyplot as mpl
-        fig = mpl.figure()
-        ax = fig.add_subplot(111)
-
-        ax.scatter(*self.draw_prior(10000), facecolors="0.7", edgecolors="None", s=10, alpha=0.1)
-
-        if data is not None:
-            data_,error_ = data
-            ax.axvline(data_, color="C0", ls="--")
-            ax.axvspan(data_-error_, data_+error_, color="C0", alpha=0.3)
-            ax.scatter(*self.draw_posterior(*data,100), facecolors="C0", edgecolors="None", marker="x", s=10, alpha=0.1)
-            afuv, afuverr = self.get_afuv(*data)
-            ax.errorbar(data_, afuv, yerr=afuverr, marker="s", ms=10, color="C0", ecolor="C0")
-        
+        if not hasattr(self, "_sfr_estimator") or self._sfr_estimator is None:
+            self._sfr_estimator = self.get_sfr_estimator()
+        return self._sfr_estimator
