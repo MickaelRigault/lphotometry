@@ -44,7 +44,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     #  Special Methods  #
     # ================= #
     def get_lssfr(self, radius=None, runits="kpc",
-                      accept_backup=["mass","sfr"], refsize=None,
+                      accept_backup=["mass","sfr"], refsize=1,
                       apply_dustcorr=True, **kwargs):
         """ """
         if accept_backup is None:
@@ -59,7 +59,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     
         return local_sfr[0] - local_mass[0], np.sqrt(local_sfr[1]**2 + np.mean(local_mass[1:])**2)
         
-    def get_mass(self, radius=None, runits="kpc", accept_backup=True, refsize=None, **kwargs):
+    def get_mass(self, radius=None, runits="kpc", accept_backup=True, refsize=1, **kwargs):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
@@ -94,7 +94,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
             
         return nuv-r, np.sqrt(nuverr**2+rerr**2)
             
-    def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False, refsize=None):
+    def get_derived_parameters(self, radius=None, runits="kpc", rebuild=False, refsize=1):
         """ """
         if radius is not None:
             self.measure_photometry(radius, runits=runits, derive_data=False)
