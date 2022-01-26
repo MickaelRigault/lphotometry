@@ -156,12 +156,14 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         self._derived_data = self.get_derived_parameters(rebuild=True)
 
 
-    def show(self, savefile=None):
+    def show(self, savefile=None, instrumentnames=["fuv","nuv","g","r","i"]):
         """ """
         import matplotlib.pyplot as mpl
         fig = mpl.figure(figsize=[10,7])
-        
-        instrumentnames = [k for k in self.instruments.keys() if "_" not in k]
+
+        if instrumentnames is None:
+            instrumentnames = [k for k in self.instruments.keys() if "_" not in k]
+            
         ninstruments = len(instrumentnames)
 
         # - Stamps
@@ -196,7 +198,7 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         ax_lssfr = fig.add_axes([0.55, BOTTOM, 0.475-LEFT, 0.075*2+0.05])
 
 
-        _ = self.show_stamps(ax=axstamps)
+        _ = self.show_stamps(ax=axstamps, instrumentnames=instrumentnames)
         #
         _ = self.uv.show_afuv(ax=ax_afuv, ncol_legend=2)
         _ = self.show_nuvr(ax=ax_nuvr)

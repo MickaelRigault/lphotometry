@@ -16,8 +16,6 @@ def salim_afuv(uvcolor, use_sfcurve=True, squeeze=True):
     afuv_base[uvc>cut] = backup
     
     return np.squeeze(afuv_base) if squeeze else afuv_base
-    
-
 
 
 

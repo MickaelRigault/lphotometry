@@ -206,7 +206,6 @@ class _Photomatize_( target._TargetHandler_ ):
             return None
         return img.copy()
 
-
     def get_localdata(self, band, radius, runits="kpc", **kwargs):
         """ get the image center on the target coordinate (radius = half the square size) """
         instru = self.get_instrument(band, **kwargs)
@@ -214,13 +213,12 @@ class _Photomatize_( target._TargetHandler_ ):
             return [np.NaN, np.NaN], None
         size_pixels = radius * instru.units_to_pixels( runits ).value
         xpix, ypix = instru.coords_to_pixel(instru.target.ra, instru.target.dec)
-        ymin,ymax,xmin,xmax = int(np.rint(ypix-size_pixels)),int(np.rint(ypix+size_pixels)), int(np.rint(xpix-size_pixels)),int(np.rint(xpix+size_pixels))
+        ymin,ymax = int(np.rint(ypix-size_pixels)),int(np.rint(ypix+size_pixels))
+        xmin,xmax = int(np.rint(xpix-size_pixels)),int(np.rint(xpix+size_pixels))
         return (xpix-xmin,ypix-ymin), instru.data[ymin:ymax,xmin:xmax]
         
-
-
-    def show_stamps(self, ax=None, savefile=None, figsize=None, colorbase="white",
-                        radius_kpc=10,
+    def show_stamps(self, ax=None, instrumentnames=None,
+                        savefile=None, figsize=None, colorbase="white", radius_kpc=10,
                         linecolor="w", textcolor="0.9", vmin="1",vmax="99",
                         stretching="arcsinh", **kwargs):
         """ 
@@ -273,7 +271,9 @@ class _Photomatize_( target._TargetHandler_ ):
             CMAPS = CMAPS_full[colorbase]                 
 
         #####
-        instrumentnames = [k for k in self.instruments.keys() if "_" not in k]
+        if instrumentnames is None:
+            instrumentnames = [k for k in self.instruments.keys() if "_" not in k]
+            
         ninstruments = len(instrumentnames)
         if figsize is None:
             figsize = [2*ninstruments,2]
@@ -294,7 +294,6 @@ class _Photomatize_( target._TargetHandler_ ):
 
         for i, band in enumerate(instrumentnames):
             ax_ = ax[i]
-            
             if radius_kpc is not None:
                 centroid, data = self.get_localdata(band, radius_kpc, "kpc")
             else:
