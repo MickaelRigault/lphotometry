@@ -151,11 +151,10 @@ class GalexSFREstimator():
         
         if apply_dustcorr:
             f_fuv /= 10**(-0.4*self.get_afuv()[0])
-            
+
+        lum_fuv = f_fuv*(4*np.pi*self._distcm**2)
         if inhz:
             lum_fuv *= (self.BANDS["fuv"]["lbda"]**2/constants.c.to("AA/s")).value
-                        
-        lum_fuv = f_fuv*(4*np.pi*self._distcm**2)
         
         if surface is not None:
             lum_fuv /= surface

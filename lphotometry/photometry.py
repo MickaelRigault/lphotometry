@@ -201,7 +201,7 @@ class _Photomatize_( target._TargetHandler_ ):
     
     def get_instrument(self, bandname):
         """ get a copy on the instrument """
-        img = self.instruments[bandname]
+        img = self.instruments.get(bandname,None)
         if img is None:
             return None
         return img.copy()
@@ -294,13 +294,14 @@ class _Photomatize_( target._TargetHandler_ ):
 
         for i, band in enumerate(instrumentnames):
             ax_ = ax[i]
+
             if radius_kpc is not None:
                 centroid, data = self.get_localdata(band, radius_kpc, "kpc")
             else:
                 instru = self.get_instrument(band)
                 data  = instru.data
                 centroid = instru.coords_to_pixel(*self.target.radec)
-
+                
             # - No Data
             if data is None:
                 ax_.text(0.5,0.5, f"no {band} band", va="center",ha="center", 
@@ -423,18 +424,14 @@ class PS1LocalMass( _Photomatize_ ):
         imag = self.get_photometry("ps1.i", mag=True)
         return MassEstimator(gmag=gmag, imag=imag, distmpc=self.target.distmpc)
 
-    def get_mass(self, radius=None, runits="kpc", refsize=None, **kwargs):
+    def get_mass(self, radius=None, runits="kpc", refsize=None, accept_backup=True, **kwargs):
         """ """
         if radius is not None:
             self.measure_photometry(radius=radius,runits=runits)
 
         offset=self._get_surface_offset_(refsize)
-        return self.mass_estimator.get_mass(offset=offset, **kwargs)
+        return self.mass_estimator.get_mass(offset=offset, accept_backup=accept_backup, **kwargs)
         
-    def get_backup_mass(self):
-        """ Assuming the mean and the std of the local mass distribution from Rigault et al. 2018"""
-        return 8.06, 0.58 #from Rigault et al. 2018 (SNfactory data)
-
     def _get_surface_offset_(self, refsize):
         """ """
         if refsize is None:

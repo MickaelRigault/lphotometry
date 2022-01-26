@@ -1,6 +1,7 @@
 """ Analysis of masses """
 
 
+import warnings
 from scipy import stats
 import numpy as np
 
@@ -110,12 +111,11 @@ class PriorGIColor():
         ax.plot(xx, self.get_pdf(xx), color=to_rgba(color_prior), label="Galaxies")
         
         # - data
-        if data_error is not None:
+        if data_error is not None and not np.isnan(data_error).any():
             data, error = data_error
             ax.axvspan(data-2*error, data+2*error, color=to_rgba(color_data, 0.1), label="Observed")
             ax.axvspan(data-3*error, data+3*error, color=to_rgba(color_data, 0.1))
         
-
             posterior = self.draw_posterior(data, error, size=1000)
             gposterior = stats.gaussian_kde(posterior)
             coef = self.get_pdf(np.mean(data))
@@ -203,7 +203,7 @@ class MassEstimator():
     # -------- #
     #  GETTER  #
     # -------- #
-    def get_mass(self, use_giprior=True, size=None, offset=None):
+    def get_mass(self, use_giprior=True, size=None, offset=None, accept_backup=True):
         """ 
         offset: [float or None] -optional-
             if you want to retract this to the measured mass.
@@ -219,19 +219,34 @@ class MassEstimator():
             get_mean = False
         
         # remark, not using get_gicolor for imags and gmags to be the same
-        gmags, imags = self._gmagstat.rvs(size),self._imagstat.rvs(size)
-        colors = gmags-imags
-        if use_giprior:
-            colors = self.giprior.draw_posterior(colors, size=size)
+        if self.has_bothmags():
+            gmags, imags = self._gmagstat.rvs(size),self._imagstat.rvs(size)
+            colors = gmags-imags
+            if use_giprior:
+                colors = self.giprior.draw_posterior(colors, size=size)
         
-        mass = taylor_mass_relation(imags, colors, self.distmpc)
-        if offset is not None:
-            mass -= offset
+            mass = taylor_mass_relation(imags, colors, self.distmpc)    
+            if offset is not None:
+                mass -= offset
+            
+        elif accept_backup:
+            warnings.warn("Backup local mass uses. Assumes 1kpc radius.")
+            return self.get_backupmass(size=None if get_mean else size)
+        else:
+            return np.NaN,np.NaN
+                
         if get_mean:
             return np.mean(mass), np.std(mass)
         
         return mass
-    
+
+    def get_backupmass(self, size=None):
+        """ """
+        mass, emass= 8.06, 0.58 #from Rigault et al. 2018 (SNfactory data) | For 1kpc
+        if size is None:
+            return mass, emass
+        return stats.norm.rvs(size=size, loc=mass, scale=emass)
+            
     def get_gicolor(self, use_prior=True, size=1000):
         """ if size is None, mean and std returned (based on 1000 samples)  """
         if size is None:
@@ -241,11 +256,18 @@ class MassEstimator():
             get_mean = False
             
         # - Colors
-        colors = self._gmagstat.rvs(size)-self._imagstat.rvs(size)
-        if use_prior:
-            colors = self.giprior.draw_posterior(colors)
+        if self.has_bothmags():
+            colors = self._gmagstat.rvs(size)-self._imagstat.rvs(size)
+        else:
+            colors = np.ones(size)*np.NaN
             
-        # - Returns            
+        if use_prior:
+            if np.isnan(colors).all():
+                colors = self.giprior.draw_prior(size)
+            else:
+                colors = self.giprior.draw_posterior(colors)
+            
+        # - Returns
         if get_mean:
             return np.mean(colors), np.std(colors)
         
@@ -323,7 +345,11 @@ class MassEstimator():
         if not hasattr(self, "_giprior"):
             self._giprior = PriorGIColor()
         return self._giprior
-        
+
+    def has_bothmags(self):
+        """ """
+        return self.gmag[0] is not None and self.imag[0] is not None
+    
     @property
     def gmag(self):
         """ """

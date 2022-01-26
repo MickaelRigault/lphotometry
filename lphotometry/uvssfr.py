@@ -16,9 +16,14 @@ class UVLocalsSFR( photometry._Photomatize_ ):
     BANDS = {**photometry.UVLocalSFR.BANDS,
              **photometry.PS1LocalMass.BANDS}
     
-    def load_data(self, **kwargs):
+    def load_data(self, galex_edgebuffer=True, **kwargs):
         """ """
-        self.uv = photometry.UVLocalSFR.from_target(self.target, **kwargs)
+        if not galex_edgebuffer:
+            propuv = dict(buffer_safe_width=0)
+        else:
+            propuv = {}
+            
+        self.uv = photometry.UVLocalSFR.from_target(self.target, **{**propuv,**kwargs})
         self.optical = photometry.PS1LocalMass.from_target(self.target, **kwargs)
         
     def set_instrument(self, *args, **kwargs):
@@ -59,15 +64,9 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         if radius is not None:
             self.measure_photometry(radius, runits=runits)
 
-            
-        if self.has_optical():
-            m, *err = self.optical.get_mass(refsize=refsize, **kwargs)
-            return m, np.mean([err])
+        return self.optical.get_mass(refsize=refsize, accept_backup=accept_backup,
+                                        **kwargs)
         
-        elif accept_backup:
-            return self.optical.get_backup_mass(**kwargs)
-        
-        return np.NaN,np.NaN
 
     def get_sfr(self, radius=None, runits="kpc", accept_backup=True,
                     apply_dustcorr=True, **kwargs):
@@ -156,7 +155,8 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         self._derived_data = self.get_derived_parameters(rebuild=True)
 
 
-    def show(self, savefile=None, instrumentnames=["fuv","nuv","g","r","i"]):
+    def show(self, savefile=None, instrumentnames=["fuv","nuv","g","r","i"],
+                 instnamecolor="k", kpclinecolor="k"):
         """ """
         import matplotlib.pyplot as mpl
         fig = mpl.figure(figsize=[10,7])
@@ -198,7 +198,8 @@ class UVLocalsSFR( photometry._Photomatize_ ):
         ax_lssfr = fig.add_axes([0.55, BOTTOM, 0.475-LEFT, 0.075*2+0.05])
 
 
-        _ = self.show_stamps(ax=axstamps, instrumentnames=instrumentnames)
+        _ = self.show_stamps(ax=axstamps, instrumentnames=instrumentnames,
+                                 textcolor=instnamecolor, linecolor=kpclinecolor)
         #
         _ = self.uv.show_afuv(ax=ax_afuv, ncol_legend=2)
         _ = self.show_nuvr(ax=ax_nuvr)
